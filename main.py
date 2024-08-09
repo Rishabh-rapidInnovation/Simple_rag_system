@@ -1,5 +1,3 @@
-import os
-import time
 from langchain_community.document_loaders import PyPDFDirectoryLoader
 from langchain_google_genai import GoogleGenerativeAIEmbeddings, ChatGoogleGenerativeAI
 from langchain.text_splitter import RecursiveCharacterTextSplitter
@@ -7,18 +5,21 @@ from langchain_pinecone import PineconeVectorStore
 from pinecone import Pinecone, ServerlessSpec
 from langchain.chains import RetrievalQA
 from config import GOOGLE_API_KEY, PINECONE_API_KEY
+import os
+import time
 
 def load_and_split_documents(directory):
     loader = PyPDFDirectoryLoader(directory)
     data = loader.load()
     text_splitter = RecursiveCharacterTextSplitter(chunk_size=500, chunk_overlap=20)
-    return text_splitter.split_documents(data)
+    text_chunks = text_splitter.split_documents(data)
+    return text_chunks
 
 def setup_embeddings():
     os.environ['GOOGLE_API_KEY'] = GOOGLE_API_KEY
     return GoogleGenerativeAIEmbeddings(model="models/embedding-001")
 
-def setup_pinecone_index(index_name):
+def setup_pinecone(index_name):
     os.environ['PINECONE_API_KEY'] = PINECONE_API_KEY
     pc = Pinecone(api_key=os.environ.get("PINECONE_API_KEY"))
     existing_indexes = [index_info["name"] for index_info in pc.list_indexes()]
@@ -46,31 +47,35 @@ def main():
     print("start")
 
     text_chunks = load_and_split_documents("pdf")
-    print(text_chunks)
+    print(f"Number of text chunks: {len(text_chunks)}")
 
     embeddings = setup_embeddings()
     result = embeddings.embed_query("start")
-    print(len(result))
+    print(f"Embedding dimension: {len(result)}")
 
-    index_name = "nasa"
-    index = setup_pinecone_index(index_name)
+    index_name = "rag-techniques"
+    index = setup_pinecone(index_name)
 
     vectorstore = create_vectorstore(text_chunks, embeddings, index_name)
-    print(vectorstore)
+    print(f"Vectorstore created: {type(vectorstore).__name__}")
 
     qa = setup_qa_chain(vectorstore)
 
+    print("\n--- Q&A Session ---")
     while True:
-        user_input = input("Input Prompt: ")
+        user_input = input("\nInput Prompt (type 'exit' to end): ")
         if user_input.lower() == 'exit':
             print('Exiting')
             break
         if user_input == '':
             continue
+        
         result = qa.invoke(user_input)
-        print(f"Answer: {result}")
+        
+        print("\nQ: " + user_input)
+        print("A: " + result['result'].strip())
 
-    print("end")
-
+    print("\nend")
+    
 if __name__ == "__main__":
     main()
